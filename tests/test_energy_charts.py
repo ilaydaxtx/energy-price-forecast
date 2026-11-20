@@ -43,9 +43,17 @@ def test_fetch_prices_deduplicates_across_chunks():
     def handler(request):
         return httpx.Response(200, json={"unix_seconds": [SWITCH], "price": [1.0]})
 
+    calls = []
+
+    def counting_handler(request):
+        calls.append(request)
+        return handler(request)
+
+    # Two years spans more than one PRICE_CHUNK_DAYS chunk.
     df = energy_charts.fetch_prices(
-        date(2025, 1, 1), date(2025, 3, 31), client=mock_client(handler)
+        date(2024, 1, 1), date(2025, 12, 31), client=mock_client(counting_handler)
     )
+    assert len(calls) > 1
     assert len(df) == 1
 
 

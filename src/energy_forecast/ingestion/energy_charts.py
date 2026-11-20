@@ -13,11 +13,14 @@ from datetime import date
 import httpx
 import pandas as pd
 
-from energy_forecast.ingestion._common import date_chunks, http_client
+from energy_forecast.ingestion._common import date_chunks, get_json, http_client
 
 BASE_URL = "https://api.energy-charts.info"
 BIDDING_ZONE = "DE-LU"
-CHUNK_DAYS = 31
+# Large chunks keep the request count low; the API rate-limits bursts of small requests.
+# Measured: one year of prices is ~0.1 MB, half a year of power data ~2.5 MB.
+PRICE_CHUNK_DAYS = 366
+POWER_CHUNK_DAYS = 183
 
 # Energy-Charts production type name -> our column name (values in MW)
 POWER_COLUMNS = {
@@ -30,9 +33,7 @@ POWER_COLUMNS = {
 
 
 def _get(client: httpx.Client, path: str, params: dict) -> dict:
-    response = client.get(f"{BASE_URL}/{path}", params=params)
-    response.raise_for_status()
-    return response.json()
+    return get_json(client, f"{BASE_URL}/{path}", params)
 
 
 def _to_utc_index(unix_seconds: list[int]) -> pd.DatetimeIndex:
@@ -48,7 +49,7 @@ def fetch_prices(start: date, end: date, client: httpx.Client | None = None) -> 
     """Day-ahead prices for DE-LU in EUR/MWh, indexed by UTC timestamp (native resolution)."""
     with http_client(client) as c:
         frames = []
-        for chunk_start, chunk_end in date_chunks(start, end, CHUNK_DAYS):
+        for chunk_start, chunk_end in date_chunks(start, end, PRICE_CHUNK_DAYS):
             payload = _get(
                 c,
                 "price",
@@ -71,7 +72,7 @@ def fetch_power(start: date, end: date, client: httpx.Client | None = None) -> p
     """Load and renewable generation for Germany in MW, indexed by UTC timestamp (15 min)."""
     with http_client(client) as c:
         frames = []
-        for chunk_start, chunk_end in date_chunks(start, end, CHUNK_DAYS):
+        for chunk_start, chunk_end in date_chunks(start, end, POWER_CHUNK_DAYS):
             payload = _get(
                 c,
                 "public_power",

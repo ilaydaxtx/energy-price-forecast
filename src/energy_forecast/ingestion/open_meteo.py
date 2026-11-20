@@ -16,7 +16,7 @@ from datetime import date
 import httpx
 import pandas as pd
 
-from energy_forecast.ingestion._common import date_chunks, http_client
+from energy_forecast.ingestion._common import date_chunks, get_json, http_client
 
 BASE_URL = "https://historical-forecast-api.open-meteo.com/v1/forecast"
 CHUNK_DAYS = 92
@@ -42,9 +42,10 @@ def fetch_weather(start: date, end: date, client: httpx.Client | None = None) ->
     with http_client(client) as c:
         frames = []
         for chunk_start, chunk_end in date_chunks(start, end, CHUNK_DAYS):
-            response = c.get(
+            payload = get_json(
+                c,
                 BASE_URL,
-                params={
+                {
                     "latitude": lats,
                     "longitude": lons,
                     "start_date": chunk_start.isoformat(),
@@ -54,8 +55,6 @@ def fetch_weather(start: date, end: date, client: httpx.Client | None = None) ->
                     "timezone": "UTC",
                 },
             )
-            response.raise_for_status()
-            payload = response.json()
             # A multi-location request returns a list with one entry per location, in order.
             per_location = payload if isinstance(payload, list) else [payload]
             if len(per_location) != len(names):
